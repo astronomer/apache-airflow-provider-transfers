@@ -35,6 +35,28 @@ def test_openlineage_database_dataset_name():
         db.openlineage_dataset_name(table=Table)
 
 
+def test_raising_of_NotImplementedError_by_subclass_of_dataProviders():
+    """
+    Test that the class inheriting from DataProviders should implement methods
+    """
+
+    methods = [
+        "openlineage_dataset_namespace",
+        "openlineage_dataset_name",
+        "openlineage_dataset_uri",
+        "default_metadata",
+    ]
+
+    test = DatabaseDataProviderSubclass(dataset=Table(name="test"), transfer_mode=TransferMode.NONNATIVE)
+    for method in methods:
+        with pytest.raises(NotImplementedError):
+            m = test.__getattribute__(method)
+            m()
+
+    with pytest.raises(NotImplementedError):
+        test.hook
+
+
 def test_subclass_missing_not_implemented_methods_raise_exception():
     db = DatabaseDataProviderSubclass(dataset=Table(name="test"), transfer_mode=TransferMode.NONNATIVE)
     with pytest.raises(NotImplementedError):
@@ -48,6 +70,9 @@ def test_subclass_missing_not_implemented_methods_raise_exception():
 
     with pytest.raises(NotImplementedError):
         db.default_metadata
+
+    with pytest.raises(NotImplementedError):
+        db.sql_type
 
     with pytest.raises(NotImplementedError):
         db.run_sql("SELECT * FROM inexistent_table")

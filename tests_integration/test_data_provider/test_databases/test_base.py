@@ -5,11 +5,11 @@ import pathlib
 import pandas as pd
 import pytest
 import smart_open
-from utils.test_utils import create_unique_str, export_to_dataframe
-
 from universal_transfer_operator.data_providers.base import DataStream
+from universal_transfer_operator.datasets.dataframe.base import Dataframe
 from universal_transfer_operator.datasets.file.base import File
 from universal_transfer_operator.datasets.table import Table
+from utils.test_utils import create_unique_str, export_to_dataframe
 
 CWD = pathlib.Path(__file__).parent
 
@@ -48,6 +48,10 @@ dataset_name = create_unique_str(10)
             "object": File(path=f"sftp://upload/{dataset_name}.csv"),
             "local_file_path": f"{str(CWD)}/../../data/sample.csv",
         },
+        {
+            "name": "PandasdataframeDataProvider",
+            "object": Dataframe(dataframe=pd.read_csv(f"{str(CWD)}/../../data/sample.csv")),
+        },
     ],
     indirect=True,
     ids=lambda dp: dp["name"],
@@ -74,6 +78,10 @@ dataset_name = create_unique_str(10)
             "name": "SFTPDataProvider",
             "object": File(path=f"sftp://upload/{dataset_name}.csv"),
         },
+        {
+            "name": "PandasdataframeDataProvider",
+            "object": Dataframe(dataframe=pd.read_csv(f"{str(CWD)}/../../data/sample.csv")),
+        },
     ],
     indirect=True,
     ids=lambda dp: dp["name"],
@@ -87,15 +95,27 @@ def test_read_write_methods_of_datasets(src_dataset_fixture, dst_dataset_fixture
     result = []
     for source_data in src_dp.read():
         result.append(dst_dp.write(source_data))
-    output_df = export_to_dataframe(dst_dp)
+    output_df = get_dataframe(dst_dp, dataset_object)
     input_df = pd.read_csv(f"{str(CWD)}/../../data/sample.csv")
 
-    assert result == [
-        dst_dp.get_table_qualified_name(dataset_object)
-        if isinstance(dataset_object, Table)
-        else dataset_object.path
-    ]
+    assert result == get_results(dst_dp, dataset_object)
     assert output_df.equals(input_df)
+
+
+def get_dataframe(dst_dp, dataset_object):
+    if isinstance(dataset_object, (Table, File)):
+        return export_to_dataframe(dst_dp)
+    elif isinstance(dataset_object, Dataframe):
+        return dataset_object.dataframe
+
+
+def get_results(dst_dp, dataset_object):
+    if isinstance(dataset_object, Table):
+        return [dst_dp.get_table_qualified_name(dataset_object)]
+    elif isinstance(dataset_object, File):
+        return [dataset_object.path]
+    elif isinstance(dataset_object, Dataframe):
+        return [dst_dp]
 
 
 # Creating a temp dir for below test, since it's a pattern test, we need to control the files

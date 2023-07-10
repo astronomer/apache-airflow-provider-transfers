@@ -7,15 +7,12 @@ from typing import Generic, Iterator, TypeVar
 
 import attr
 import pandas as pd
-from airflow.hooks.base import BaseHook
 
-from universal_transfer_operator.constants import Location
+from universal_transfer_operator.datasets.dataframe.base import Dataframe
 from universal_transfer_operator.datasets.file.base import File
 from universal_transfer_operator.datasets.table import Table
-from universal_transfer_operator.integrations.base import TransferIntegrationOptions
-from universal_transfer_operator.utils import get_dataset_connection_type
 
-DatasetType = TypeVar("DatasetType", File, Table)
+DatasetType = TypeVar("DatasetType", File, Table, Dataframe)
 
 
 @attr.define
@@ -37,33 +34,8 @@ class DataProviders(ABC, Generic[DatasetType]):
     def __init__(
         self,
         dataset: DatasetType,
-        transfer_mode,
-        transfer_params: TransferIntegrationOptions = TransferIntegrationOptions(),
     ):
         self.dataset: DatasetType = dataset
-        self.transfer_params = transfer_params
-        self.transfer_mode = transfer_mode
-        self.transfer_mapping: set[Location] = set()
-        self.LOAD_DATA_NATIVELY_FROM_SOURCE: dict = {}
-
-    def __repr__(self):
-        return f'{self.__class__.__name__}(conn_id="{self.dataset.conn_id})'
-
-    @property
-    def hook(self) -> BaseHook:
-        """Return an instance of the Airflow hook."""
-        raise NotImplementedError
-
-    def check_if_exists(self) -> bool:
-        """Return true if the dataset exists"""
-        raise NotImplementedError
-
-    def check_if_transfer_supported(self, source_dataset: DatasetType) -> bool:
-        """
-        Checks if the transfer is supported from source to destination based on source_dataset.
-        """
-        source_connection_type = get_dataset_connection_type(source_dataset)
-        return Location(source_connection_type) in self.transfer_mapping
 
     def read(self) -> Iterator[pd.DataFrame] | Iterator[DataStream]:
         """Read from filesystem dataset or databases dataset and write to local reference locations or dataframes"""
@@ -75,44 +47,3 @@ class DataProviders(ABC, Generic[DatasetType]):
         :param source_ref: Stream of data to be loaded into output table or a pandas dataframe.
         """
         raise NotImplementedError
-
-    @property
-    def openlineage_dataset_namespace(self) -> str:
-        """
-        Returns the open lineage dataset namespace as per
-        https://github.com/OpenLineage/OpenLineage/blob/main/spec/Naming.md
-        """
-        raise NotImplementedError
-
-    @property
-    def openlineage_dataset_name(self) -> str:
-        """
-        Returns the open lineage dataset name as per
-        https://github.com/OpenLineage/OpenLineage/blob/main/spec/Naming.md
-        """
-        raise NotImplementedError
-
-    @property
-    def openlineage_dataset_uri(self) -> str:
-        """
-        Returns the open lineage dataset uri as per
-        https://github.com/OpenLineage/OpenLineage/blob/main/spec/Naming.md
-        """
-        return f"{self.openlineage_dataset_namespace}{self.openlineage_dataset_name}"
-
-    def populate_metadata(self):
-        """
-        Given a dataset, check if the dataset has metadata.
-        """
-        raise NotImplementedError
-
-    def is_native_path_available(  # skipcq: PYL-R0201
-        self,
-        source_dataset: File | Table,  # skipcq: PYL-W0613
-    ) -> bool:
-        """
-        Check if there is an optimised path for source to destination.
-
-        :param source_dataset: File | Table from which we need to transfer data
-        """
-        return False

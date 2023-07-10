@@ -3,16 +3,15 @@ from __future__ import annotations
 import logging
 import random
 import string
-from typing import TYPE_CHECKING, ClassVar
+from typing import ClassVar, Iterator
 
 import pandas as pd
-from pandas import DataFrame, read_json
-
 from universal_transfer_operator import settings
-from universal_transfer_operator.constants import ColumnCapitalization, FileType
-
-if TYPE_CHECKING:
-    from universal_transfer_operator.datasets.file.base import File
+from universal_transfer_operator.constants import FileType
+from universal_transfer_operator.data_providers.base import DataStream
+from universal_transfer_operator.data_providers.dataframe.base import DataframeProvider
+from universal_transfer_operator.datasets.dataframe.base import Dataframe
+from universal_transfer_operator.datasets.file.base import File
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +48,36 @@ def convert_dataframe_to_file(df: pd.DataFrame) -> File:
     return file
 
 
-class PandasDataframe(DataFrame):
-    """Pandas-compatible dataframe class that can be serialized and deserialized into XCom by Airflow 2.5"""
-
+class PandasdataframeDataProvider(DataframeProvider):
     version: ClassVar[int] = 1
+
+    def read(self) -> Iterator[pd.DataFrame]:
+        """Read from dataframe dataset and write to local reference locations or dataframes"""
+        yield self.dataset.dataframe
+
+    def write(self, source_ref: pd.DataFrame | DataStream):
+        """Write the data to the dataframe dataset or filesystem dataset"""
+        if isinstance(source_ref, pd.DataFrame):
+            return PandasdataframeDataProvider(dataset=Dataframe(dataframe=source_ref))
+        else:
+            return PandasdataframeDataProvider(
+                dataset=Dataframe(
+                    dataframe=source_ref.actual_file.type.export_to_dataframe(
+                        stream=source_ref.remote_obj_buffer
+                    )
+                )
+            )
+
+    def equals(self, other: PandasdataframeDataProvider):
+        """Check equality of two PandasdataframeDataProvider"""
+        if isinstance(other, PandasdataframeDataProvider):
+            return self.dataset.dataframe.equals(other.dataset.dataframe)
+        if isinstance(other, pd.DataFrame):
+            return self.dataset.equals(other)
+        return False
+
+    def __eq__(self, other):
+        return self.equals(other)
 
     def serialize(self):
         # Store in the metadata DB if Dataframe < 100 kb
@@ -72,36 +97,17 @@ class PandasDataframe(DataFrame):
     @staticmethod
     def deserialize(data: dict, version: int):
         if version > 1:
-            raise TypeError(f"version > {PandasDataframe.version}")
+            raise TypeError(f"version > {PandasdataframeDataProvider.version}")
         if isinstance(data, dict) and data.get("class", "") == "File":
             file = File.from_json(data)
             if file.is_dataframe:
                 logger.info("Retrieving file from %s using %s conn_id ", file.path, file.conn_id)
                 return file.export_to_dataframe()
             return file
-        return PandasDataframe.from_pandas_df(read_json(data["data"]))
+        return PandasdataframeDataProvider.from_pandas_df(pd.read_json(data["data"]))
 
     @classmethod
-    def from_pandas_df(cls, df: DataFrame) -> DataFrame | PandasDataframe:
+    def from_pandas_df(cls, df: pd.DataFrame) -> pd.DataFrame | PandasdataframeDataProvider:
         if not settings.NEED_CUSTOM_SERIALIZATION:
             return df
         return cls(df)
-
-
-def convert_columns_names_capitalization(
-    df: pd.DataFrame, columns_names_capitalization: ColumnCapitalization
-):
-    """
-    Convert cols of a dataframe to required case. Options - lower/Upper
-
-    :param df: dataframe whose cols will be altered
-    :param columns_names_capitalization: String Literal with possible values - lower/Upper
-    """
-    if isinstance(df, pd.DataFrame):
-        df = PandasDataframe.from_pandas_df(df)
-        if columns_names_capitalization == "lower":
-            df.columns = [col_label.lower() for col_label in df.columns]  # skipcq: PYL-W0201
-        elif columns_names_capitalization == "upper":
-            df.columns = [col_label.upper() for col_label in df.columns]  # skipcq: PYL-W0201
-
-    return df

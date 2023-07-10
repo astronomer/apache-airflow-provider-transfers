@@ -37,11 +37,9 @@ class BaseFilesystemProviders(DataProviders[File]):
         self.dataset = dataset
         self.transfer_params = transfer_params
         self.transfer_mode = transfer_mode
-        self.transfer_mapping = set()
+        self.transfer_mapping: set[Location] = set()
         self.LOAD_DATA_NATIVELY_FROM_SOURCE: dict = {}
-        super().__init__(
-            dataset=self.dataset, transfer_mode=self.transfer_mode, transfer_params=self.transfer_params
-        )
+        super().__init__(dataset=self.dataset)
 
     def __repr__(self):
         return f'{self.__class__.__name__}(conn_id="{self.dataset.conn_id})'
@@ -225,18 +223,20 @@ class BaseFilesystemProviders(DataProviders[File]):
         """Return the size in bytes of the given file"""
         raise NotImplementedError
 
-    def populate_metadata(self):  # skipcq: PTC-W0049
-        """
-        Given a dataset, check if the dataset has metadata.
-        """
-        pass
-
-    def get_snowflake_stage_auth_sub_statement(self) -> str:  # skipcq: PYL-R0201
-        raise NotImplementedError("In order to create a stage, `storage_integration` is required.")
-
     @property
     def snowflake_stage_path(self) -> str:
         """
         Get the altered path if needed for stage creation in snowflake stage creation
         """
         return self.dataset.path
+
+    def is_native_path_available(
+        self,
+        source_dataset: File,  # skipcq PYL-W0613, PYL-R0201
+    ) -> bool:
+        """
+        Check if there is an optimised path for source to destination.
+
+        :param source_dataset: File from which we need to transfer data
+        """
+        return False

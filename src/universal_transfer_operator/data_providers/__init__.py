@@ -7,6 +7,7 @@ from airflow.hooks.base import BaseHook
 
 from universal_transfer_operator.constants import TransferMode
 from universal_transfer_operator.data_providers.base import DataProviders
+from universal_transfer_operator.datasets.dataframe.base import Dataframe
 from universal_transfer_operator.datasets.file.base import File
 from universal_transfer_operator.datasets.table import Table
 from universal_transfer_operator.integrations.base import TransferIntegrationOptions
@@ -23,31 +24,36 @@ DATASET_CONN_ID_TO_DATAPROVIDER_MAPPING = {
     ("sqlite", Table): "universal_transfer_operator.data_providers.database.sqlite",
     ("snowflake", Table): "universal_transfer_operator.data_providers.database.snowflake",
     (None, File): "universal_transfer_operator.data_providers.filesystem.local",
+    (None, Dataframe): "universal_transfer_operator.data_providers.dataframe.Pandasdataframe",
 }
 
 
 def create_dataprovider(
-    dataset: Table | File,
+    dataset: Table | File | Dataframe,
     transfer_params: TransferIntegrationOptions | None = None,
     transfer_mode: TransferMode = TransferMode.NONNATIVE,
 ) -> DataProviders:
-    class_ref = get_dataprovider_class(dataset=dataset)
     if transfer_params is None:
         transfer_params = TransferIntegrationOptions()
-    data_provider: DataProviders = class_ref(
-        dataset=dataset,
-        transfer_params=transfer_params,
-        transfer_mode=transfer_mode,
-    )
+
+    class_ref: type[DataProviders] = get_dataprovider_class(dataset=dataset)
+    if isinstance(dataset, (Table, File)):
+        data_provider = class_ref(  # type: ignore
+            dataset=dataset,
+            transfer_params=transfer_params,
+            transfer_mode=transfer_mode,
+        )
+    elif isinstance(dataset, Dataframe):
+        data_provider = class_ref(dataset=dataset)  # type: ignore
     return data_provider
 
 
-def get_dataprovider_class(dataset: Table | File) -> type[DataProviders]:
+def get_dataprovider_class(dataset: Table | File | Dataframe) -> type[DataProviders]:
     """
     Get dataprovider class based on the dataset
     """
     conn_type = None
-    if dataset.conn_id:
+    if isinstance(dataset, (Table, File)) and getattr(dataset, "conn_id", None):
         conn_type = BaseHook.get_connection(dataset.conn_id).conn_type
     module_path = DATASET_CONN_ID_TO_DATAPROVIDER_MAPPING[(conn_type, type(dataset))]
     module = importlib.import_module(module_path)

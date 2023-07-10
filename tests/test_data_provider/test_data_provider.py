@@ -1,6 +1,6 @@
+import pandas as pd
 import pytest
 
-from universal_transfer_operator.constants import TransferMode
 from universal_transfer_operator.data_providers import create_dataprovider, get_dataprovider_options_class
 from universal_transfer_operator.data_providers.base import DataProviders
 from universal_transfer_operator.data_providers.database.snowflake import (
@@ -8,9 +8,11 @@ from universal_transfer_operator.data_providers.database.snowflake import (
     SnowflakeOptions,
 )
 from universal_transfer_operator.data_providers.database.sqlite import SqliteDataProvider
+from universal_transfer_operator.data_providers.dataframe.Pandasdataframe import PandasdataframeDataProvider
 from universal_transfer_operator.data_providers.filesystem.aws.s3 import S3DataProvider
 from universal_transfer_operator.data_providers.filesystem.google.cloud.gcs import GCSDataProvider
 from universal_transfer_operator.data_providers.filesystem.sftp import SFTPDataProvider
+from universal_transfer_operator.datasets.dataframe.base import Dataframe
 from universal_transfer_operator.datasets.file.base import File
 from universal_transfer_operator.datasets.table import Table
 from universal_transfer_operator.integrations.base import TransferIntegrationOptions
@@ -24,8 +26,9 @@ from universal_transfer_operator.integrations.base import TransferIntegrationOpt
         {"dataset": File("sftp://upload/sample.csv", conn_id="sftp_default"), "expected": SFTPDataProvider},
         {"dataset": Table("some_table", conn_id="sqlite_default"), "expected": SqliteDataProvider},
         {"dataset": Table("some_table", conn_id="snowflake_conn"), "expected": SnowflakeDataProvider},
+        {"dataset": Dataframe(dataframe=pd.DataFrame()), "expected": PandasdataframeDataProvider},
     ],
-    ids=lambda d: d["dataset"].conn_id,
+    ids=lambda d: d["expected"],
 )
 def test_create_dataprovider(datasets):
     """Test that the correct data-provider is created for a dataset"""
@@ -59,7 +62,7 @@ def test_get_option_class(datasets):
     assert isinstance(option_class, type(datasets["expected"]))
 
 
-def test_raising_of_NotImplementedError():
+def test_raising_of_not_implemented_error_by_subclass_of_data_providers():
     """
     Test that the class inheriting from DataProviders should implement methods
     """
@@ -67,37 +70,10 @@ def test_raising_of_NotImplementedError():
     class Test(DataProviders):
         pass
 
-    methods = [
-        "check_if_exists",
-        "read",
-        "openlineage_dataset_namespace",
-        "openlineage_dataset_name",
-        "populate_metadata",
-    ]
-
-    test = Test(dataset=File("/tmp/test.csv"), transfer_mode=TransferMode.NONNATIVE)
-    for method in methods:
-        with pytest.raises(NotImplementedError):
-            m = test.__getattribute__(method)
-            m()
+    test = Test(dataset=File("/tmp/test.csv"))
 
     with pytest.raises(NotImplementedError):
-        test.hook
+        test.read()
 
-
-def test_openlineage_dataset_uri():
-    """
-    Test openlineage_dataset_uri is creating the correct uri
-    """
-
-    class Test(DataProviders):
-        @property
-        def openlineage_dataset_name(self):
-            return "/rest/v1/get_user"
-
-        @property
-        def openlineage_dataset_namespace(self):
-            return "http://localhost:9900"
-
-    test = Test(dataset=File("/tmp/test.csv"), transfer_mode=TransferMode.NONNATIVE)
-    assert test.openlineage_dataset_uri == "http://localhost:9900/rest/v1/get_user"
+    with pytest.raises(NotImplementedError):
+        test.write(source_ref=pd.DataFrame())

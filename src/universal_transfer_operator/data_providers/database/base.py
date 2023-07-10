@@ -24,7 +24,6 @@ from universal_transfer_operator.constants import (
 )
 from universal_transfer_operator.data_providers.base import DataProviders, DataStream
 from universal_transfer_operator.data_providers.filesystem import resolve_file_path_pattern
-from universal_transfer_operator.datasets.dataframe.pandas import PandasDataframe
 from universal_transfer_operator.datasets.file.base import File
 from universal_transfer_operator.datasets.table import Metadata, Table
 from universal_transfer_operator.settings import (
@@ -64,11 +63,9 @@ class DatabaseDataProvider(DataProviders[Table]):
         self.transfer_params = transfer_params
         self.if_exists = self._if_exists
         self.transfer_mode = transfer_mode
-        self.transfer_mapping = set()
+        self.transfer_mapping: set[Location] = set()
         self.LOAD_DATA_NATIVELY_FROM_SOURCE: dict = {}
-        super().__init__(
-            dataset=self.dataset, transfer_mode=self.transfer_mode, transfer_params=self.transfer_params
-        )
+        super().__init__(dataset=self.dataset)
 
     def __repr__(self):
         return f'{self.__class__.__name__}(conn_id="{self.dataset.conn_id})'
@@ -227,7 +224,7 @@ class DatabaseDataProvider(DataProviders[Table]):
     ) -> str:
         """
         Load content of dataframe in output_table.
-        
+
         :param input_dataframe: dataframe
         :param output_table: Table to create
         :param if_exists: Overwrite file if exists
@@ -381,6 +378,10 @@ class DatabaseDataProvider(DataProviders[Table]):
             source_dataframe = file.export_to_dataframe(nrows=LOAD_TABLE_AUTODETECT_ROWS_COUNT)
 
         db = SQLDatabase(engine=self.sqlalchemy_engine)
+
+        # if isinstance(source_dataframe, PandasdataframeDataProvider):
+        #     source_dataframe = source_dataframe.dataset
+
         db.prep_table(
             source_dataframe,
             table.name.lower(),
@@ -650,11 +651,13 @@ class DatabaseDataProvider(DataProviders[Table]):
         )
 
     @staticmethod
-    def _assert_not_empty_df(df):
+    def _assert_not_empty_df(df: pd.DataFrame):
         """Raise error if dataframe empty
 
         param df: A dataframe
         """
+        # if isinstance(df, PandasdataframeDataProvider):
+        #     df = df.dataset
         if df.empty:
             raise ValueError("Can't load empty dataframe")
 
@@ -743,5 +746,21 @@ class DatabaseDataProvider(DataProviders[Table]):
             raise ValueError(f"The table {self.dataset.name} does not exist")
 
         sqla_table = self.get_sqla_table(self.dataset)
-        df = pd.read_sql(sql=sqla_table.select(), con=self.sqlalchemy_engine)
-        return PandasDataframe.from_pandas_df(df)
+        # df = pd.read_sql(sql=sqla_table.select(), con=self.sqlalchemy_engine)
+        # from universal_transfer_operator.data_providers.dataframe.Pandasdataframe import (
+        #     PandasdataframeDataProvider,
+        # )
+        #
+        # return PandasdataframeDataProvider.from_pandas_df(df)
+        return pd.read_sql(sql=sqla_table.select(), con=self.sqlalchemy_engine)
+
+    def is_native_path_available(
+        self,
+        source_dataset: Table,  # skipcq PYL-W0613, PYL-R0201
+    ) -> bool:
+        """
+        Check if there is an optimised path for source to destination.
+
+        :param source_dataset: Dataframe from which we need to transfer data
+        """
+        return False

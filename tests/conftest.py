@@ -9,20 +9,21 @@ from urllib.parse import urlparse, urlunparse
 import pytest
 import smart_open
 import yaml
-from airflow.models import DAG, Connection, DagRun, TaskInstance as TI
+from airflow.models import DAG, Connection, DagRun
+from airflow.models import TaskInstance as TI
 from airflow.utils import timezone
 from airflow.utils.db import create_default_connections
 from airflow.utils.session import create_session
 from google.api_core.exceptions import NotFound
-from utils.test_utils import create_unique_str
-
 from universal_transfer_operator.constants import TransferMode
 from universal_transfer_operator.data_providers import create_dataprovider
 from universal_transfer_operator.data_providers.database.base import DatabaseDataProvider
 from universal_transfer_operator.data_providers.filesystem.base import BaseFilesystemProviders
 from universal_transfer_operator.data_providers.filesystem.sftp import SFTPDataProvider
+from universal_transfer_operator.datasets.dataframe.base import Dataframe
 from universal_transfer_operator.datasets.file.base import File
 from universal_transfer_operator.datasets.table import Table
+from utils.test_utils import create_unique_str
 
 DEFAULT_DATE = timezone.datetime(2016, 1, 1)
 UNIQUE_HASH_SIZE = 16
@@ -44,6 +45,7 @@ DATASET_NAME_TO_PROVIDER_TYPE = {
     "GCSDataProvider": "file",
     "LocalDataProvider": "file",
     "SFTPDataProvider": "file",
+    "PandasdataframeDataProvider": "dataframe",
 }
 
 
@@ -201,7 +203,7 @@ def is_dir(path: str) -> bool:
     return not pathlib.PosixPath(path).suffix
 
 
-def set_missing_values(dataset_object: File | Table, dp_name: str) -> File | Table:
+def set_missing_values(dataset_object: File | Table | Dataframe, dp_name: str) -> File | Table | Dataframe:
     """Set missing values for datasets"""
     dataset_type = DATASET_NAME_TO_PROVIDER_TYPE[dp_name]
     if dataset_type == "database":
@@ -288,7 +290,8 @@ def dataset_fixture(request):
     dataset_object = set_missing_values(dataset_object=dataset_object, dp_name=dp_name)
 
     dp = create_dataprovider(dataset=dataset_object, transfer_mode=transfer_mode)
-    dp.populate_metadata()
+    if isinstance(dp, DatabaseDataProvider):
+        dp.populate_metadata()
 
     load_data_in_datasets(
         dataset_object=dataset_object, dp=dp, dp_name=dp_name, local_file_path=local_file_path

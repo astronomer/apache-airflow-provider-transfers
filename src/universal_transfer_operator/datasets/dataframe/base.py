@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from attr import define
+from typing import Any
+
+from attr import define, field
 
 from universal_transfer_operator.datasets.base import Dataset
 
@@ -10,12 +12,17 @@ class Dataframe(Dataset):
     """
     Repersents all dataframe dataset.
     Intended to be used within library.
-
-    :param path: Path to a file in the filesystem/Object stores
-    :param conn_id: Airflow connection ID
     :param name: name of dataframe
+
     """
 
-    name: str | None = None
+    name: str = field(default="")
+    dataframe: Any = field(default=None)
+    uri: str = field(init=None)  # type: ignore
 
     # TODO: define the name and namespace for dataframe
+
+    @uri.default
+    def _path_to_dataset_uri(self) -> str:
+        """Build a URI to be passed to Dataset obj introduced in Airflow 2.4"""
+        return self.name
